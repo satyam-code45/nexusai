@@ -1,0 +1,41 @@
+# Dependencies (re-installed inside the image)
+node_modules
+npm-debug.log*
+
+# Next.js build output
+.next
+out
+
+# Environment secrets — never bake into the image
+.env
+.env.*
+!.env.example
+
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Editor / OS
+.DS_Store
+.vscode
+*.swp
+*.swo
+Thumbs.db
+
+# Docs & dev tooling (not needed at runtime)
+*.md
+INTERVIEW_PREP.md
+DEPLOYMENT.md
+STARTUP.md
+
+# Test / CI
+coverage
+.nyc_output
+cypress
+__tests__
+
+# Uploads and runtime state (mounted as volumes in docker-compose)
+public/uploads
+public/agent
+public/chat-history

@@ -1,0 +1,108 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# NexusAI — Docker Compose
+#
+# QUICK START
+#   1. cp .env.example .env.local   (fill in all values)
+#   2. docker compose up --build
+#
+# The WebSocket URL baked into the browser bundle defaults to ws://localhost:1234
+# (port is published to the host). For a remote server change NEXT_PUBLIC_YWEBSOCKET_URL
+# in .env.local BEFORE running `docker compose up --build`.
+#
+# OPTIONAL LOCAL MONGODB
+#   docker compose --profile dev up --build
+#   Then set MONGODB_URI=mongodb://root:example@nexusai-mongo:27017/nexusai-db?authSource=admin
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: nexusai
+
+services:
+
+  # ── Next.js application ────────────────────────────────────────────────────
+  nexusai-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # NEXT_PUBLIC_* are baked into the client bundle at build time.
+        # Change these in .env.local before building for a different environment.
+        NEXT_PUBLIC_APP_URL:          ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+        NEXT_PUBLIC_URL:              ${NEXT_PUBLIC_URL:-http://localhost:3000}
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}
+        NEXT_PUBLIC_DEVELOPPER_KEY:   ${NEXT_PUBLIC_DEVELOPPER_KEY:-}
+        # Points the browser at the WS server published on the Docker host.
+        NEXT_PUBLIC_YWEBSOCKET_URL:   ${NEXT_PUBLIC_YWEBSOCKET_URL:-ws://localhost:1234}
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env.local
+    environment:
+      NODE_ENV: production
+    volumes:
+      # Persist uploaded files, AI short-term memory, and chat history
+      # across container restarts. Mount to the same paths used by the app.
+      - uploads:/app/public/uploads
+      - agent_stm:/app/public/agent
+      - chat_history:/app/public/chat-history
+    depends_on:
+      nexusai-ws:
+        condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/test"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ── y-websocket collaboration server ──────────────────────────────────────
+  nexusai-ws:
+    build:
+      context: .
+      dockerfile: Dockerfile.ws
+    ports:
+      # Published on the host so browsers can connect directly (ws://localhost:1234).
+      # In production put Nginx in front and don't expose this port directly.
+      - "1234:1234"
+    environment:
+      YWS_PORT: 1234
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('net').createConnection(1234,'localhost').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ── MongoDB (optional — only when --profile dev is passed) ─────────────────
+  # For production use MongoDB Atlas and set MONGODB_URI accordingly.
+  nexusai-mongo:
+    image: mongo:7
+    profiles:
+      - dev
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example
+      MONGO_INITDB_DATABASE: nexusai-db
+    volumes:
+      - mongo_data:/data/db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+# ── Named volumes ─────────────────────────────────────────────────────────────
+volumes:
+  uploads:
+    driver: local
+  agent_stm:
+    driver: local
+  chat_history:
+    driver: local
+  mongo_data:
+    driver: local
