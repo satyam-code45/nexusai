@@ -19,7 +19,7 @@ A full-stack collaborative AI workspace. Users create *projects*, add source mat
 | Background jobs | Agenda v6 with `@agendajs/mongo-backend` — embeds uploaded docs into Pinecone |
 | Real-time collab | Yjs + y-websocket v3. Awareness protocol carries live cursors + mouse positions |
 | Editor | Tiptap v3 + `@tiptap/extension-collaboration` (Yjs-backed). 3 custom extensions: Autocomplete, Rephrase, Translate |
-| AI | LangChain + LangGraph. Two LLMs: Cerebras (Qwen-3-32B, fast) + Fireworks (DeepSeek-V3, complex reasoning). Cohere for embeddings. Exa for web search |
+| AI | LangChain + LangGraph. OpenAI for chat, embeddings (text-embedding-3-small), memory compression, image reading, and audio overview. Exa for the researcher agent's live web search |
 | State | Redux Toolkit (projects, documents/sources, chat, editor UI) |
 | Styling | Tailwind CSS v4, shadcn/ui (Radix UI primitives) |
 | Package manager | npm |
@@ -72,11 +72,10 @@ See `.env.example` for the complete list with descriptions. Required variables:
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth credentials |
 | `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | Client-side Google OAuth (Drive picker) |
 | `NEXT_PUBLIC_DEVELOPPER_KEY` | Google API key for Drive picker widget |
-| `CEREBRAS_API_KEY` | Cerebras LLM (Qwen-3-32B) |
-| `FIREWORKS_API_KEY` | Fireworks LLM (DeepSeek-V3) |
-| `COHERE_API_KEY` | Cohere embeddings (embed-english-v3.0) |
-| `EXA_API_KEY` | Exa web search for research agent |
+| `OPENAI_API_KEY` | OpenAI (chat, embeddings, memory compression, image reading, audio overview) |
+| `EXA_API_KEY` | Exa web search for the researcher agent |
 | `PINECONE_API_KEY` / `PINECONE_INDEX` | Pinecone vector store |
+| `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | Cloudinary (file/media uploads) |
 | `NEXT_PUBLIC_YWEBSOCKET_URL` | y-websocket server URL (default: `ws://localhost:1234`) |
 | `WS_SECRET` | HMAC-SHA256 signing secret for WS token auth. Leave unset in dev to skip auth |
 
@@ -127,7 +126,7 @@ src/
     agenda/               Agenda job scheduler (docEmbedding job)
     api/                  Client-side fetch helpers
     helper/               Utility functions (title generation, chunking)
-    llm/                  LLM singleton factory (Cerebras + Fireworks)
+    llm/                  LLM singleton factory (OpenAI)
     mongodb/              Connection helper, withAuth middleware
     multi-doc-agent/      LangGraph agent graph definitions
     pipelines/            multi-vector.ts — chunk + embed into Pinecone
@@ -158,7 +157,7 @@ Mongoose schemas in `src/models/`:
 | **KnowledgeBase** | fileName, source_type (upload/weblink/youtube/text/drive), summary, studyGuide, mindMap |
 | **Source** | Generated multi-doc report (summary/study guide/mindmap) referencing multiple KnowledgeBase docs |
 
-`NexusPage.yjsState` is the binary Yjs CRDT state written by the WS server on disconnect and read on connect. Pinecone holds vector embeddings (via OpenAI text-embedding-3-small) used for RAG. Uploaded files live on disk under `public/uploads/`.
+`NexusPage.yjsState` is the binary Yjs CRDT state written by the WS server on disconnect and read on connect. Pinecone holds vector embeddings (via OpenAI text-embedding-3-small) used for RAG. Uploaded files are stored in Cloudinary, not on local disk.
 
 ---
 
@@ -221,8 +220,8 @@ Singleton classes in `src/services/` expose userId/projectId-scoped MongoDB quer
 
 ## Known Limitations / Development Notes
 
-1. **File storage** is local disk (`public/uploads/`). In production, use S3 or similar object storage.
-2. **STM/chat-history** are single JSON files — not suitable for multi-user concurrent production load. Replace with Redis or per-user MongoDB documents.
+1. **File storage** is Cloudinary (`src/lib/uploadToCloudinary.ts`) — no local disk persistence to worry about.
+2. **STM/chat-history** are stored per-user in MongoDB (`ShortTermMemorySchema`, `ChatHistorySchema`).
 3. **Google Drive picker** requires the Google Drive API to be enabled in your Google Cloud project and the picker API key to have the correct domain restrictions.
 4. **Agenda jobs** run in the Next.js server process (started in `instrumentation.ts`). In production you would want a dedicated worker process.
 5. **y-websocket** needs to run as a separate long-lived process. See the Getting Started section for the correct launch command; `npx y-websocket` does not work with v3.

@@ -13,6 +13,10 @@ Your responsibilities:
 
 <tools>
 - Use the tool:read_from_scratchpad to read a file as ordered by manager agent
+- Use the tool:webSearch when the retrieved document content does not answer the user's question,
+  or the question requires current/live information (news, recent events, anything outside the
+  uploaded documents). Call it with the original or an expanded query and synthesize its results
+  alongside any retrieved document content. Cite source URLs when you use a web result.
 <tools>
 
 <workflow>
@@ -60,6 +64,8 @@ eg:
 11. After collecting all retrieved content from the RetrieverAgents, synthesize a final, comprehensive,
     and accurate answer to the user's original question using the retrieved content.
     Ground your answer in the retrieved content. Cite sources where possible.
+12. If the retrieved content is missing, insufficient, or the question needs current/live information,
+    call tool:webSearch before answering and incorporate its results, citing source URLs.
 </workflow>
 
 <communication_rules>

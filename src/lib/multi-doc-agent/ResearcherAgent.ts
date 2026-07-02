@@ -12,6 +12,7 @@ import { multiQueryAgent } from "./sub-agents/researchTeam/multiQueryAgent";
 import { plannerAgent } from "./sub-agents/researchTeam/plannerAgentResearch";
 // import { RESEARCHER_AGENT_PROMT } from "./prompts/researchAgentPrompt";
 import { writeFileTool, readFileTool } from "@/lib/tools/fileSystemTools";
+import { webSearchTool } from "@/lib/tools/WebSearchTool";
 import { RESEARCHER_AGENT_PROMPT } from "./prompts/researchAgentPrompt";
 import { retrieverAgent } from "./sub-agents/researchTeam/RetrieverAgent";
 import { toolMonitoringMiddleware } from "./middleware/toolMonitoringMiddleWare";
@@ -22,7 +23,7 @@ import { statusContext } from "./statusContext";
 const agent = createAgent({
   model: researcherAgentModel,
   systemPrompt: RESEARCHER_AGENT_PROMPT,
-  tools: [LibrarianAgent, multiQueryAgent, plannerAgent, readFileTool, writeFileTool, retrieverAgent],
+  tools: [LibrarianAgent, multiQueryAgent, plannerAgent, readFileTool, writeFileTool, retrieverAgent, webSearchTool],
   middleware: [toolMonitoringMiddleware],
 });
 

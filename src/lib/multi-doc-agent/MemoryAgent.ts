@@ -12,6 +12,7 @@ import { compressSTMTool } from "../tools/memory/compressSTMTool";
 import { retrieveRelevantLTMTool } from "../tools/memory/retrieveRelevantLTMTool";
 import { memorySystemPrompt } from "../tools/memory/MemoryPrompt";
 import { mainResearcherAgent } from "./managerAgent";
+import { webSearchTool } from "../tools/WebSearchTool";
 
 
 
@@ -28,6 +29,7 @@ export function memoryAndConversationalAgent(props: { userId: string, projectId:
         extractKeyConceptsTool,
         compressSTMTool,
         retrieveRelevantLTMTool,
+        webSearchTool,
     ];
 
     const tools = hasDocuments
