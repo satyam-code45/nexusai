@@ -67,7 +67,8 @@ See `.env.example` for the complete list with descriptions. Required variables:
 | Variable | Purpose |
 |---|---|
 | `MONGODB_URI` | MongoDB Atlas connection string |
-| `NEXTAUTH_URL` | App base URL (must match OAuth redirect) |
+| `NEXT_PUBLIC_APP_URL` | App base URL — client-side API calls prefix this value, so an unset value breaks every fetch in production. Baked in at build time; changing it needs a redeploy. |
+| `NEXTAUTH_URL` | App base URL (must match OAuth redirect) — same value as `NEXT_PUBLIC_APP_URL` |
 | `NEXTAUTH_SECRET` | NextAuth JWT signing secret |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth credentials |
 | `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | Client-side Google OAuth (Drive picker) |
