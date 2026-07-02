@@ -10,7 +10,7 @@ WORKDIR /app
 # Install libc compat for native modules on Alpine
 RUN apk add --no-cache libc6-compat
 
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json .npmrc ./
 RUN npm ci --frozen-lockfile
 
 

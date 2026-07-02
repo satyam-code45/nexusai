@@ -9,7 +9,7 @@ WORKDIR /app
 RUN apk add --no-cache libc6-compat
 
 # Install only production deps the server actually needs
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json .npmrc ./
 RUN npm ci --frozen-lockfile --omit=dev
 
 # Copy only the server script
