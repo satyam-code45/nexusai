@@ -1,0 +1,28 @@
+.cursor-container {
+  position: fixed; /* Use fixed to stay relative to viewport */
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.1s cubic-bezier(0.17, 0.67, 0.83, 0.67); /* Smooths out movement */
+  will-change: transform;
+}
+
+.cursor-svg {
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.2));
+}
+
+.cursor-label {
+  margin-left: 12px; /* Position label to the right of the tip */
+  margin-top: 4px;
+  padding: 4px 10px;
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  border-radius: 0px 8px 8px 8px; /* Tab-like feel */
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  font-family: sans-serif;
+}
