@@ -36,11 +36,25 @@ export const POST = withAuth(async (req: Request) => {
         try {
             docs = await fetchYoutubeDocs(youtubeLink);
         } catch (err) {
-            console.error("Transcript fetch failed:", err);
-            return NextResponse.json(
-                { message: "Could not retrieve transcript. Ensure captions are enabled on this video." },
-                { status: 400 }
-            );
+            const errMessage = err instanceof Error ? err.message : String(err);
+            console.error("Transcript fetch failed:", errMessage);
+
+            // Give an accurate message per failure mode instead of always blaming
+            // the video's caption settings — that's often not the real cause.
+            let message: string;
+            if (errMessage.startsWith("INVALID_URL")) {
+                message = "That doesn't look like a valid YouTube video link.";
+            } else if (errMessage.startsWith("NO_CAPTIONS")) {
+                message = "This video has no captions (manual or auto-generated) — there's no transcript to read.";
+            } else if (errMessage.includes("not playable on any client")) {
+                // YouTube sometimes blocks/rate-limits requests from datacenter IPs
+                // (Vercel, AWS Lambda) — this is almost never actually about captions.
+                message = "Could not reach this video right now — YouTube may be temporarily rate-limiting our server. Please try again in a minute, or try a different video.";
+            } else {
+                message = "Could not retrieve this video's transcript. Please try again in a moment.";
+            }
+
+            return NextResponse.json({ message }, { status: 400 });
         }
 
         const title = await generateTitle(llm, docs);
@@ -73,33 +87,46 @@ export const POST = withAuth(async (req: Request) => {
 });
 
 async function fetchYoutubeDocs(url: string): Promise<Document[]> {
-    try {
-        // Match only real video ID patterns: ?v=ID, /shorts/ID, or bare /ID at end of path
-        const videoIdMatch = url.match(/(?:[?&]v=|\/shorts\/)([a-zA-Z0-9_-]{11})(?:[&?/]|$)/)
-          ?? url.match(/youtu\.be\/([a-zA-Z0-9_-]{11})(?:[?/]|$)/);
-        const videoId = videoIdMatch ? videoIdMatch[1] : "";
+    // Match only real video ID patterns: ?v=ID, /shorts/ID, or bare /ID at end of path
+    const videoIdMatch = url.match(/(?:[?&]v=|\/shorts\/)([a-zA-Z0-9_-]{11})(?:[&?/]|$)/)
+      ?? url.match(/youtu\.be\/([a-zA-Z0-9_-]{11})(?:[?/]|$)/);
+    const videoId = videoIdMatch ? videoIdMatch[1] : "";
 
-        if (!videoId) {
-            throw new Error("Invalid YouTube URL. Could not extract Video ID.");
-        }
-
-        const subtitles = await getSubtitles({ videoID: videoId, lang: 'en' });
-
-        if (!subtitles || subtitles.length === 0) {
-            throw new Error("No subtitles found. Captions might be disabled on this video.");
-        }
-
-        const fullText = subtitles.map(sub => sub.text).join(' ');
-
-        return [
-            new Document({
-                pageContent: fullText,
-                metadata: { source: url, source_type: 'youtube', videoId }
-            })
-        ];
-
-    } catch (error) {
-        console.error("Caption Extractor Error:", error);
-        throw new Error(`Failed to fetch transcript: ${error instanceof Error ? error.message : "Unknown error"}`);
+    if (!videoId) {
+        throw new Error("INVALID_URL: Could not extract video ID from the link.");
     }
+
+    // YouTube sometimes rate-limits/blocks requests from datacenter IPs (Vercel,
+    // AWS Lambda) transiently — retry once before giving up. A genuinely
+    // caption-less video won't fix itself on retry, so we skip retrying that case.
+    const MAX_ATTEMPTS = 2;
+    let lastError: unknown;
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        try {
+            const subtitles = await getSubtitles({ videoID: videoId, lang: 'en' });
+
+            if (!subtitles || subtitles.length === 0) {
+                throw new Error("NO_CAPTIONS: No caption tracks exist on this video.");
+            }
+
+            const fullText = subtitles.map(sub => sub.text).join(' ');
+
+            return [
+                new Document({
+                    pageContent: fullText,
+                    metadata: { source: url, source_type: 'youtube', videoId }
+                })
+            ];
+        } catch (error) {
+            lastError = error;
+            const message = error instanceof Error ? error.message : String(error);
+            console.error(`[youtube] transcript attempt ${attempt}/${MAX_ATTEMPTS} failed:`, message);
+
+            if (message.startsWith("NO_CAPTIONS")) break;
+            if (attempt < MAX_ATTEMPTS) await new Promise((r) => setTimeout(r, 1200));
+        }
+    }
+
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
