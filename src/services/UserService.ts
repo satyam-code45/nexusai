@@ -27,10 +27,8 @@ export class UserService {
     name: string;
     email: string;
     image: string;
-    access_token?: string;
-    refresh_token?: string;
   }) {
-    const { id, name, image, email, access_token, refresh_token } = props;
+    const { id, name, image, email } = props;
 
     const existingUser = await this.findByEmail(email);
 
@@ -39,8 +37,6 @@ export class UserService {
         name: name,
         email: email,
         image: image,
-        googleAccessToken: access_token,
-        googleRefreshToken: refresh_token,
         googleId: id,
       });
 
@@ -52,19 +48,9 @@ export class UserService {
         },
       };
     } else {
-      const user = await User.findByIdAndUpdate(
-        existingUser?._id,
-        {
-          googleAccessToken: access_token,
-          googleRefreshToken: refresh_token,
-        },
-        { new: true, runValidators: true },
-      );
-      const updateUser = user?.toObject();
-
       return {
         authData: {
-          ...updateUser,
+          ...existingUser.toObject(),
         },
       };
     }

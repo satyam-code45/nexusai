@@ -15,7 +15,7 @@ import {
 } from "@/store/roomSlice";
 import {
   Pencil, Plus, Users, LogIn, DoorOpen, FileText, BarChart2,
-  BrainCircuit, GraduationCap, Trash2, Eye, AlertTriangle,
+  BrainCircuit, GraduationCap, Trash2, Eye, AlertTriangle, Loader2, RefreshCw,
 } from "lucide-react";
 import { truncateTitle } from "@/lib/utils";
 import { reportDataType } from "@/lib/api/projects";
@@ -33,6 +33,7 @@ export default function WorkspaceDashboard({ userId, projectId, roomId }: Props)
 
   const [deletingDoc, setDeletingDoc] = useState<string | null>(null);
   const [deletingReport, setDeletingReport] = useState<string | null>(null);
+  const [retryingDoc, setRetryingDoc] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ type: "doc" | "report"; id: string; name: string } | null>(null);
 
   useEffect(() => {
@@ -41,6 +42,35 @@ export default function WorkspaceDashboard({ userId, projectId, roomId }: Props)
       dispatch(fetchSources({ projectId, userId, roomId }));
     }
   }, [dispatch, userId, projectId, roomId]);
+
+  // While any source is still embedding in the background, poll for status
+  // updates so "pending" flips to "embedded"/"failed" without a manual refresh.
+  const hasPendingDoc = (docs as any[])?.some((d) => d.status === "pending");
+  useEffect(() => {
+    if (!hasPendingDoc || !userId || !projectId) return;
+    const interval = setInterval(() => {
+      dispatch(fetchDocs({ projectId, userId, roomId }));
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [hasPendingDoc, dispatch, userId, projectId, roomId]);
+
+  async function handleRetryDoc(id: string) {
+    setRetryingDoc(id);
+    try {
+      const res = await fetch(`/api/projects/docs/retry`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, projectId }),
+      });
+      if (!res.ok) throw new Error("Failed to retry");
+      showSuccess("Retrying — this may take a moment");
+      dispatch(fetchDocs({ projectId, userId, roomId }));
+    } catch {
+      showError("Could not retry embedding");
+    } finally {
+      setRetryingDoc(null);
+    }
+  }
 
   const editorHref = activeRoom?.roomId
     ? `/workspace/${projectId}/editor?roomId=${activeRoom.roomId}`
@@ -197,7 +227,9 @@ export default function WorkspaceDashboard({ userId, projectId, roomId }: Props)
                 doc={doc}
                 projectId={projectId}
                 deleting={deletingDoc === doc._id}
+                retrying={retryingDoc === doc._id}
                 onDelete={() => setConfirmDelete({ type: "doc", id: doc._id, name: doc.title })}
+                onRetry={() => handleRetryDoc(doc._id)}
               />
             ))}
           </div>
@@ -286,9 +318,9 @@ function SectionHeader({ icon, title, subtitle }: { icon: React.ReactNode; title
 }
 
 function DocCard({
-  doc, projectId, deleting, onDelete,
+  doc, projectId, deleting, retrying, onDelete, onRetry,
 }: {
-  doc: any; projectId: string; deleting: boolean; onDelete: () => void;
+  doc: any; projectId: string; deleting: boolean; retrying: boolean; onDelete: () => void; onRetry: () => void;
 }) {
   const dispatch = useDispatch<AppDispatch>();
   const router = useRouter();
@@ -360,17 +392,46 @@ function DocCard({
         )}
       </div>
 
-      <span
-        style={{
-          fontSize: 10, fontWeight: 600,
-          color: sourceTypeColor(doc.source_type),
-          background: sourceTypeBg(doc.source_type),
-          padding: "2px 7px", borderRadius: 4,
-          alignSelf: "flex-start", textTransform: "uppercase", letterSpacing: "0.04em",
-        }}
-      >
-        {doc.source_type || "file"}
-      </span>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+        <span
+          style={{
+            fontSize: 10, fontWeight: 600,
+            color: sourceTypeColor(doc.source_type),
+            background: sourceTypeBg(doc.source_type),
+            padding: "2px 7px", borderRadius: 4,
+            textTransform: "uppercase", letterSpacing: "0.04em",
+          }}
+        >
+          {doc.source_type || "file"}
+        </span>
+
+        {doc.status === "pending" && (
+          <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 500, color: "var(--l-ink3)" }}>
+            <Loader2 size={10} className="animate-spin" /> Processing
+          </span>
+        )}
+
+        {doc.status === "failed" && (
+          <span
+            style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 600, color: "#EF4444" }}
+            title={doc.embeddingError || "Embedding failed"}
+          >
+            <AlertTriangle size={10} /> Failed
+            <button
+              onClick={(e) => { e.stopPropagation(); onRetry(); }}
+              disabled={retrying}
+              style={{
+                display: "flex", alignItems: "center", gap: 3,
+                background: "none", border: "none", padding: 0,
+                color: "var(--l-moss)", fontWeight: 600, cursor: "pointer",
+                textDecoration: "underline",
+              }}
+            >
+              <RefreshCw size={9} className={retrying ? "animate-spin" : ""} /> Retry
+            </button>
+          </span>
+        )}
+      </div>
     </div>
   );
 }

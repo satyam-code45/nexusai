@@ -7,6 +7,13 @@ import { fetchDocs } from "@/store/docSlice";
 import { toggleAddSourceModal } from "@/store/projectSlice";
 import { useEditorCollab } from "@/contexts/EditorCollabContext";
 
+// Vercel Serverless Functions hard-cap the request body at 4.5MB (platform-level,
+// not configurable) — files past this never reach the route handler, they're
+// rejected at the gateway with a bare 413. Leave headroom below 4.5MB for
+// multipart/form-data overhead so this check trips before the gateway does.
+const MAX_UPLOAD_BYTES = 4.3 * 1024 * 1024;
+const MAX_UPLOAD_LABEL = "4.3MB";
+
 export const DragAndDropSection = ({
   projectId,
   userId,
@@ -42,39 +49,64 @@ export const DragAndDropSection = ({
   };
 
   const uploadFiles = (files: FileList) => {
+    const allFiles = Array.from(files);
+
+    // The route reads a single "file" field per request, so each file needs
+    // its own request anyway — that also means each request body is just one
+    // file, which is what keeps it under Vercel's per-request size limit.
+    const validFiles = allFiles.filter((file) => {
+      if (file.size > MAX_UPLOAD_BYTES) {
+        showError(`"${file.name}" is ${(file.size / (1024 * 1024)).toFixed(1)}MB — max upload size is ${MAX_UPLOAD_LABEL}`);
+        return false;
+      }
+      return true;
+    });
+
+    if (validFiles.length === 0) return;
+
     // Close modal immediately — upload continues in the background
     dispatch(toggleAddSourceModal());
 
-    const fileNames = Array.from(files).map((f) => f.name).join(", ");
-
     // fire-and-forget — this function intentionally does not await
     (async () => {
-      const formData = new FormData();
-      Array.from(files).forEach((file) => {
-        formData.append("file", file);
-        formData.append("userId", userId ?? "");
-        formData.append("projectId", projectId ?? "");
+      const results = await Promise.allSettled(
+        validFiles.map(async (file) => {
+          const formData = new FormData();
+          formData.append("file", file);
+          formData.append("userId", userId ?? "");
+          formData.append("projectId", projectId ?? "");
+
+          const response = await fetch(`/api/addsource/uploads`, {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!response.ok) {
+            if (response.status === 413) {
+              throw new Error(`"${file.name}" exceeds the ${MAX_UPLOAD_LABEL} upload limit`);
+            }
+            const body = await response.json().catch(() => ({}));
+            throw new Error(body?.message || `"${file.name}" failed (${response.status})`);
+          }
+
+          return file.name;
+        })
+      );
+
+      const succeeded = results.filter((r) => r.status === "fulfilled") as PromiseFulfilledResult<string>[];
+      const failed = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
+
+      if (succeeded.length > 0) {
+        showSuccess(`"${succeeded.map((r) => r.value).join(", ")}" uploaded successfully`);
+      }
+      failed.forEach((r) => {
+        showError(r.reason?.message || "Upload failed");
+        console.error("[DragAndDrop] upload error:", r.reason);
       });
 
-      try {
-        const response = await fetch(`/api/addsource/uploads`, {
-          method: "POST",
-          body: formData,
-        });
-
-        if (!response.ok) {
-          const body = await response.json().catch(() => ({}));
-          throw new Error(body?.message || `Upload failed (${response.status})`);
-        }
-
-        showSuccess(`"${fileNames}" uploaded successfully`);
-        if (projectId && userId) {
-          dispatch(fetchDocs({ projectId, userId, roomId }));
-          broadcastSourceUploaded();
-        }
-      } catch (error) {
-        showError((error as Error)?.message || "Upload failed");
-        console.error("[DragAndDrop] upload error:", error);
+      if (succeeded.length > 0 && projectId && userId) {
+        dispatch(fetchDocs({ projectId, userId, roomId }));
+        broadcastSourceUploaded();
       }
     })();
   };
@@ -102,6 +134,7 @@ export const DragAndDropSection = ({
         <span className="text-[var(--l-moss)] cursor-pointer">choose file</span> to upload
       </p>
       <p className="text-muted-foreground text-xs">Supported: PDF, .txt, .docx, .pptx, Markdown</p>
+      <p className="text-muted-foreground text-xs">Max file size: {MAX_UPLOAD_LABEL}</p>
 
       <input
         type="file"

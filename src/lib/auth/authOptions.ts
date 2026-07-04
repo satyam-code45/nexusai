@@ -29,12 +29,10 @@ export const authOptions = {
         email: string;
         image: string;
       };
-      const access_token = account?.access_token;
-      const refresh_token = account?.refresh_token;
       try {
         await connectDB();
         const userService = UserService.getInstance();
-        await userService.createUser({ ...userData, access_token, refresh_token });
+        await userService.createUser(userData);
         return true;
       } catch (error) {
         console.error("Failed to create/update user during sign-in:", error);

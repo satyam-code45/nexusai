@@ -2,7 +2,7 @@ import { Document } from "@langchain/core/documents";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { Runnable } from "@langchain/core/runnables";
 
-const MAX_CHARS = 48_000; // ~12k tokens — well within Cerebras 128k context
+const MAX_CHARS = 48_000; // ~12k tokens — well within gpt-4o's 128k context
 
 export async function generateSummary<T extends Runnable>(llm: T, splitDocs: Document[]) {
   const fullText = splitDocs.map((d) => d.pageContent).join("\n\n").slice(0, MAX_CHARS);

@@ -282,7 +282,7 @@ when they contain reusable value or create conversational state.
 SAVE YOUR OWN REPLY when it includes any of:
 ✔ Step-by-step advice, plans, or checklists
 ✔ Code, prompts, configs, or “do this” implementation guidance
-✔ Decisions made (“We will use X”, “Use Fireworks instead of Cerebras”)
+✔ Decisions made (“We will use X”, “Use Postgres instead of MongoDB”)
 ✔ A summary of what the user should do next
 ✔ Any constraints or requirements you established
 

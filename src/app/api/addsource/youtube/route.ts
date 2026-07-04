@@ -1,12 +1,11 @@
 
 import { NextResponse } from "next/server";
-import { after } from "next/server";
 import { utilityModel } from "@/lib/llm/agentModels";
 import { KnowLedgeBaseService } from "@/services/KnowLedgeBaseService";
 import { generateTitle } from "@/lib/helper/generateDocTitle";
 import { getSubtitles } from 'youtube-caption-extractor';
 import { Document } from "@langchain/core/documents";
-import { docEmbeddingMultiVector } from "@/lib/pipelines/multi-vector";
+import { agenda } from "@/lib/agenda/agenda";
 import { withAuth } from "@/lib/mongodb/withAuth";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/authOptions";
@@ -63,14 +62,7 @@ export const POST = withAuth(async (req: Request) => {
         const fileUrl = `/api/sources/${newDoc._id}/content`;
         await docRepo.updateFileUrl({ docId: String(newDoc._id), fileUrl });
 
-        after(async () => {
-            try {
-                await docEmbeddingMultiVector({ rawTexts: [transcript], fileUrl, userId, projectId });
-                console.log("✅ YouTube transcript embedding complete");
-            } catch (err) {
-                console.error("❌ YouTube embedding failed:", err);
-            }
-        });
+        await agenda.now("docEmbedding", { docId: String(newDoc._id), content: transcript, userId, projectId });
 
         return NextResponse.json({ message: "Document saved successfully" });
 

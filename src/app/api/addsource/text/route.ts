@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
-import { after } from "next/server";
 import { utilityModel } from "@/lib/llm/agentModels";
 import { KnowLedgeBaseService } from "@/services/KnowLedgeBaseService";
 import { Document } from "@langchain/core/documents";
 import { generateUniqueFileName } from "@/lib/utils";
-import { docEmbeddingMultiVector } from "@/lib/pipelines/multi-vector";
+import { agenda } from "@/lib/agenda/agenda";
 import { generateTitle } from "@/lib/helper/generateDocTitle";
 import { withAuth } from "@/lib/mongodb/withAuth";
 import { getServerSession } from "next-auth";
@@ -56,14 +55,7 @@ export const POST = withAuth(async (req: Request) => {
         const fileUrl = `/api/sources/${newDoc._id}/content`;
         await docRepo.updateFileUrl({ docId: String(newDoc._id), fileUrl });
 
-        after(async () => {
-            try {
-                await docEmbeddingMultiVector({ rawTexts: [text], fileUrl, userId, projectId });
-                console.log("✅ Text embedding complete");
-            } catch (err) {
-                console.error("❌ Text embedding failed:", err);
-            }
-        });
+        await agenda.now("docEmbedding", { docId: String(newDoc._id), content: text, userId, projectId });
 
         return NextResponse.json({ message: "Document saved successfully" });
 

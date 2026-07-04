@@ -1,5 +1,6 @@
 import { KnowledgeBase } from "@/models/KnowledgeBase";
 import { Types } from "mongoose";
+import { isRoomMemberForProject } from "@/lib/mongodb/roomAccess";
 
 interface IcreateDoc {
   fileName: string;
@@ -98,13 +99,26 @@ export class KnowLedgeBaseService {
     await KnowledgeBase.findByIdAndUpdate(props.docId, { $set: { fileUrl: props.fileUrl } });
   }
 
-  async deleteDoc(props: { id: string; projectId: string; userId: string }) {
-    const result = await KnowledgeBase.findOneAndDelete({
-      _id: props.id,
-      projectId: props.projectId,
-      userId: props.userId,
+  async setEmbeddingStatus(props: { docId: string; status: "pending" | "embedded" | "failed"; error?: string }) {
+    await KnowledgeBase.findByIdAndUpdate(props.docId, {
+      $set: { status: props.status, embeddingError: props.error ?? null },
     });
-    if (!result) throw new Error("Document not found or unauthorized");
-    return result;
+  }
+
+  async deleteDoc(props: { id: string; projectId: string; userId: string }) {
+    const doc = await KnowledgeBase.findOne({ _id: props.id, projectId: props.projectId });
+    if (!doc) throw new Error("Document not found");
+
+    // Owner can always delete; otherwise fall back to room-membership check
+    // (same authorization pattern used for reading a shared doc's content —
+    // see src/app/api/sources/[id]/content/route.ts) so collaborators in a
+    // shared room can delete sources another member uploaded.
+    if (doc.userId?.toString() !== props.userId) {
+      const allowed = await isRoomMemberForProject(props.userId, props.projectId);
+      if (!allowed) throw new Error("Document not found or unauthorized");
+    }
+
+    await KnowledgeBase.deleteOne({ _id: props.id });
+    return doc;
   }
 }

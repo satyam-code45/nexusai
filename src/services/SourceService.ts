@@ -1,4 +1,5 @@
 import { Source } from "@/models/sourceSchema";
+import { isRoomMemberForProject } from "@/lib/mongodb/roomAccess";
 
 export class SourceService {
   private static instance: SourceService;
@@ -50,12 +51,15 @@ export class SourceService {
   }
 
   async deleteSource(props: { id: string; projectId: string; userId: string }) {
-    const result = await Source.findOneAndDelete({
-      _id: props.id,
-      projectId: props.projectId,
-      userId: props.userId,
-    });
-    if (!result) throw new Error("Report not found or unauthorized");
-    return result;
+    const source = await Source.findOne({ _id: props.id, projectId: props.projectId });
+    if (!source) throw new Error("Report not found");
+
+    if (source.userId?.toString() !== props.userId) {
+      const allowed = await isRoomMemberForProject(props.userId, props.projectId);
+      if (!allowed) throw new Error("Report not found or unauthorized");
+    }
+
+    await Source.deleteOne({ _id: props.id });
+    return source;
   }
 }

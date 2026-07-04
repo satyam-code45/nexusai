@@ -1,4 +1,4 @@
-import { NextResponse, after } from "next/server";
+import { NextResponse } from "next/server";
 import path from "path";
 import { utilityModel } from "@/lib/llm/agentModels";
 import { KnowLedgeBaseService } from "@/services/KnowLedgeBaseService";
@@ -6,7 +6,7 @@ import { loadDocumentFromBuffer } from "@/lib/loaders/doc-loaders";
 import { generateTitle } from "@/lib/helper/generateDocTitle";
 import { getDocChunk } from "@/lib/helper/getDocChunk";
 import { uploadFileService } from "@/services/uploadFileService";
-import { docEmbeddingMultiVector } from "@/lib/pipelines/multi-vector";
+import { agenda } from "@/lib/agenda/agenda";
 import { withAuth } from "@/lib/mongodb/withAuth";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/authOptions";
@@ -50,25 +50,26 @@ export const POST = withAuth(async (req: Request) => {
   }
 
   const docRepo = KnowLedgeBaseService.getInstance();
+  let newDoc;
   try {
-    await docRepo.createDoc({ fileName, fileUrl, userId, title, projectId, source_type });
+    newDoc = await docRepo.createDoc({ fileName, fileUrl, userId, title, projectId, source_type });
   } catch (err) {
     await uploadService.removeStoredFile(fileUrl).catch(() => {});
     throw err;
   }
 
-  after(async () => {
-    try {
-      if (!extractedText) {
-        console.warn("⚠️ No text extracted from file, skipping embedding:", fileUrl);
-        return;
-      }
-      await docEmbeddingMultiVector({ rawTexts: [extractedText], fileUrl, userId, projectId });
-      console.log("✅ Embedding complete:", fileUrl);
-    } catch (err) {
-      console.error("❌ Embedding failed:", err);
-    }
-  });
+  if (!extractedText) {
+    console.warn("⚠️ No text extracted from file, skipping embedding:", fileUrl);
+    await docRepo.setEmbeddingStatus({
+      docId: String(newDoc._id),
+      status: "failed",
+      error: "No text could be extracted from this file",
+    });
+  } else {
+    // Embed the already-extracted text directly rather than passing the Cloudinary
+    // URL — avoids the job having to re-fetch the file (which may 401).
+    await agenda.now("docEmbedding", { docId: String(newDoc._id), content: extractedText, userId, projectId });
+  }
 
   return NextResponse.json({ message: "Document uploaded successfully" }, { status: 200 });
 });
