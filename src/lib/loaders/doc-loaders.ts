@@ -76,8 +76,13 @@ export async function loadWeb(url: string) {
 
 export async function loadPDF(filePath: string) {
   const { PDFParse } = await import("pdf-parse");
+  // pdf-parse defaults to pdfjs-dist's DOMCanvasFactory, which needs browser
+  // DOM APIs (DOMMatrix, document, ...) that don't exist in Node — the actual
+  // cause of "DOMMatrix is not defined" in serverless. pdf-parse ships its own
+  // Node-compatible factory (backed by @napi-rs/canvas) for exactly this case.
+  const { CanvasFactory } = await import("pdf-parse/worker");
   const buffer = await fs.readFile(filePath);
-  const parser = new (PDFParse as any)({ data: buffer });
+  const parser = new (PDFParse as any)({ data: buffer, CanvasFactory });
   const result = await parser.getText();
   return [new Document({ pageContent: result.text, metadata: { source: filePath } })];
 }
