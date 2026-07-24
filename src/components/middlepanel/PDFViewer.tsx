@@ -18,6 +18,7 @@ import { toggleAddSourceModal } from "@/store/projectSlice";
 import { useEditorCollab } from "@/contexts/EditorCollabContext";
 import { PDFThumbnails } from "./PDFThumbnails";
 import { cn } from "@/lib/utils";
+import { DisplayMarkDown } from "@/components/chatbox/DisplayMarkDown";
 import Image from "next/image";
 
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -219,7 +220,7 @@ function PDFPicker() {
 type RenderMode = "pdf" | "transcript" | "weblink";
 
 const PDF_TYPES = ["pdf", "doc", "docx", "pptx", "ppt", "ppsx", "pptm"];
-const TEXT_TYPES = ["youtube", "weblink", "text", "txt"];
+const TEXT_TYPES = ["youtube", "weblink", "text", "txt", "md", "markdown"];
 
 function getRenderMode(sourceType?: string, url?: string): RenderMode {
   if (sourceType) {
@@ -257,6 +258,7 @@ function TranscriptViewer({ url, title, sourceType }: { url: string; title?: str
   }, [url]);
 
   const isYoutube = sourceType?.toLowerCase().includes("youtube");
+  const isMarkdown = sourceType?.toLowerCase().includes("md") || sourceType?.toLowerCase().includes("markdown");
 
   if (loading) {
     return (
@@ -283,15 +285,20 @@ function TranscriptViewer({ url, title, sourceType }: { url: string; title?: str
 
   return (
     <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
-      {/* Transcript header */}
-      <div className="flex-shrink-0 flex items-center gap-2 px-4 py-2.5 border-b border-border bg-muted/30">
+      {/* Transcript header — the pane's outer title bar (PDFViewer's own "Source" tab
+          header) already shows the doc title, so this only surfaces info that's NOT
+          already visible there (native `title` attribute keeps it as a hover tooltip). */}
+      <div
+        className="flex-shrink-0 flex items-center gap-2 px-4 py-2.5 border-b border-border bg-muted/30"
+        title={title}
+      >
         {isYoutube && (
           <div className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded bg-red-500">
             <svg viewBox="0 0 24 24" className="h-3 w-3 fill-white"><path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/></svg>
           </div>
         )}
         <span className="text-xs font-medium text-foreground truncate">
-          {isYoutube ? "Video Transcript" : title || "Source Content"}
+          {isYoutube ? "Video Transcript" : "Source Content"}
         </span>
         <span className="ml-auto flex-shrink-0 text-[10px] text-muted-foreground tabular-nums">
           {text ? `${text.split(/\s+/).filter(Boolean).length.toLocaleString()} words` : ""}
@@ -299,9 +306,15 @@ function TranscriptViewer({ url, title, sourceType }: { url: string; title?: str
       </div>
       {/* Scrollable text */}
       <div className="flex-1 overflow-y-auto px-5 py-4">
-        <p className="text-sm leading-7 text-foreground whitespace-pre-wrap font-['Georgia',serif]">
-          {text}
-        </p>
+        {isMarkdown ? (
+          <div className="text-sm leading-7 text-foreground">
+            <DisplayMarkDown text={text ?? ""} />
+          </div>
+        ) : (
+          <p className="text-sm leading-7 text-foreground whitespace-pre-wrap font-['Georgia',serif]">
+            {text}
+          </p>
+        )}
       </div>
     </div>
   );
