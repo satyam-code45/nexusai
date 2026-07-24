@@ -20,7 +20,7 @@ export class uploadFileService {
       throw new Error(`File too large. Maximum allowed size is 50 MB.`);
     }
 
-    const allowedExtensions = [".pdf", ".txt", ".docx", ".pptx", ".doc"];
+    const allowedExtensions = [".pdf", ".txt", ".docx", ".pptx", ".doc", ".md"];
     const parsedName = path.parse(file.name);
     const extension = parsedName.ext.toLowerCase();
 

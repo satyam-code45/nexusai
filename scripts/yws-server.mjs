@@ -19,12 +19,6 @@ import * as encoding  from 'lib0/encoding';
 import * as decoding  from 'lib0/decoding';
 import { createHmac } from 'node:crypto';
 import mongoose from 'mongoose';
-// Runs the docEmbedding job processor in this same persistent process — see
-// scripts/agenda-worker.ts for why Agenda's poller needs a continuously-alive
-// event loop that Vercel serverless functions can't provide. This process
-// already stays alive indefinitely for the WS relay, so it doubles as the
-// Agenda worker too rather than requiring a separate deployed service.
-import { startAgenda, agenda } from '../src/lib/agenda/agenda.ts';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -64,10 +58,6 @@ if (MONGODB_URI) {
   mongoose.connect(MONGODB_URI, { maxPoolSize: 5, serverSelectionTimeoutMS: 5_000 })
     .then(() => console.log('[yws] MongoDB connected'))
     .catch(err => console.error('[yws] MongoDB connection failed:', err.message));
-
-  startAgenda()
-    .then(() => console.log('[yws] Agenda job processor started'))
-    .catch(err => console.error('[yws] Failed to start Agenda:', err.message));
 } else {
   console.warn('[yws] MONGODB_URI not set — Yjs state will not be persisted');
 }
@@ -381,8 +371,6 @@ async function shutdown(signal) {
 
   // Wait for last-disconnect saves that are still in flight
   await Promise.allSettled([...pendingSaves.values()]);
-
-  await agenda.stop().catch(() => {});
 
   if (mongoose.connection.readyState === 1) {
     await mongoose.disconnect().catch(() => {});

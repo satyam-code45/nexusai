@@ -19,9 +19,6 @@ const nextConfig: NextConfig = {
     // Turbopack was left free to mangle @napi-rs/canvas's dynamic native
     // binary require(), which only works when Node resolves it untouched.
     "@napi-rs/canvas",
-    // Agenda job queue — uses MongoDB native driver internals Turbopack can't bundle
-    "agenda",
-    "@agendajs/mongo-backend",
     // Google Cloud / googleapis use dynamic requires
     "@google-cloud/pubsub",
     "googleapis",

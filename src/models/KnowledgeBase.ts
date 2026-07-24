@@ -13,7 +13,7 @@ const knowledgeBaseSchema = new mongoose.Schema({
   briefing: { type: String },
   source_type: { type: String },
   // Embedding pipeline state — set to "pending" on creation, flipped to "embedded"
-  // or "failed" by the docEmbedding Agenda job (see src/lib/agenda/agenda.ts).
+  // or "failed" by the docEmbedding Inngest function (see src/inngest/functions/docEmbedding.ts).
   status: { type: String, enum: ["pending", "embedded", "failed"], default: "pending" },
   embeddingError: { type: String },
   userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },

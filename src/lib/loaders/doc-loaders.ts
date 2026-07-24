@@ -138,6 +138,7 @@ export async function loadDocumentFromBuffer(
       case "pptm":
         return await loadPptx(tmpFile);
       case "txt":
+      case "md":
         return await loadText(tmpFile);
       default:
         throw new Error(`Unsupported file type: .${ext}`);
@@ -162,7 +163,7 @@ async function loadDocumentFromUrl(
   }
 
   // Plain text: no temp file needed
-  if (ext === "txt" || ext === "") {
+  if (ext === "txt" || ext === "md" || ext === "") {
     const text = await response.text();
     const docs = [new Document({ pageContent: text, metadata: { source: url } })];
     return splitDocToChunks(docs, { chunkSize, chunkOverlap });
@@ -256,6 +257,7 @@ export async function loadDocument(
       docs = await loadWeb(filePath);
       break;
     case 'txt':
+    case 'md':
       docs = await loadText(filePath);
       break;
     default:

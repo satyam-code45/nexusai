@@ -6,7 +6,7 @@ import { loadDocumentFromBuffer } from "@/lib/loaders/doc-loaders";
 import { generateTitle } from "@/lib/helper/generateDocTitle";
 import { getDocChunk } from "@/lib/helper/getDocChunk";
 import { uploadFileService } from "@/services/uploadFileService";
-import { agenda } from "@/lib/agenda/agenda";
+import { inngest } from "@/inngest/client";
 import { withAuth } from "@/lib/mongodb/withAuth";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/authOptions";
@@ -67,8 +67,13 @@ export const POST = withAuth(async (req: Request) => {
     });
   } else {
     // Embed the already-extracted text directly rather than passing the Cloudinary
-    // URL — avoids the job having to re-fetch the file (which may 401).
-    await agenda.now("docEmbedding", { docId: String(newDoc._id), content: extractedText, userId, projectId });
+    // URL as the load source — avoids the job having to re-fetch the file (which may
+    // 401). fileUrl is still passed through as chunk metadata so retrieval scoped to
+    // this source (via docUrl/docUrls) can find it.
+    await inngest.send({
+      name: "doc/embedding.requested",
+      data: { docId: String(newDoc._id), content: extractedText, fileUrl, userId, projectId },
+    });
   }
 
   return NextResponse.json({ message: "Document uploaded successfully" }, { status: 200 });

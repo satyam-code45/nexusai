@@ -5,7 +5,7 @@ import { KnowLedgeBaseService } from "@/services/KnowLedgeBaseService";
 import { generateTitle } from "@/lib/helper/generateDocTitle";
 import { getSubtitles } from 'youtube-caption-extractor';
 import { Document } from "@langchain/core/documents";
-import { agenda } from "@/lib/agenda/agenda";
+import { inngest } from "@/inngest/client";
 import { withAuth } from "@/lib/mongodb/withAuth";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/authOptions";
@@ -76,7 +76,10 @@ export const POST = withAuth(async (req: Request) => {
         const fileUrl = `/api/sources/${newDoc._id}/content`;
         await docRepo.updateFileUrl({ docId: String(newDoc._id), fileUrl });
 
-        await agenda.now("docEmbedding", { docId: String(newDoc._id), content: transcript, userId, projectId });
+        await inngest.send({
+            name: "doc/embedding.requested",
+            data: { docId: String(newDoc._id), content: transcript, fileUrl, userId, projectId },
+        });
 
         return NextResponse.json({ message: "Document saved successfully" });
 

@@ -5,7 +5,7 @@ import { withAuth } from "@/lib/mongodb/withAuth";
 import { KnowledgeBase } from "@/models/KnowledgeBase";
 import { KnowLedgeBaseService } from "@/services/KnowLedgeBaseService";
 import { isRoomMemberForProject } from "@/lib/mongodb/roomAccess";
-import { agenda } from "@/lib/agenda/agenda";
+import { inngest } from "@/inngest/client";
 
 export const POST = withAuth(async (req: Request) => {
   const session = await getServerSession(authOptions);
@@ -37,9 +37,15 @@ export const POST = withAuth(async (req: Request) => {
 
   const ownerId = doc.userId.toString();
   if (doc.content) {
-    await agenda.now("docEmbedding", { docId: id, content: doc.content, userId: ownerId, projectId });
+    await inngest.send({
+      name: "doc/embedding.requested",
+      data: { docId: id, content: doc.content, fileUrl: doc.fileUrl, userId: ownerId, projectId },
+    });
   } else if (doc.fileUrl) {
-    await agenda.now("docEmbedding", { docId: id, filePath: doc.fileUrl, userId: ownerId, projectId });
+    await inngest.send({
+      name: "doc/embedding.requested",
+      data: { docId: id, filePath: doc.fileUrl, userId: ownerId, projectId },
+    });
   } else {
     await docRepo.setEmbeddingStatus({ docId: id, status: "failed", error: "Nothing to retry — no content or file reference stored" });
     return NextResponse.json({ error: "Nothing to retry for this source" }, { status: 400 });

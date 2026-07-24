@@ -16,7 +16,7 @@ A full-stack collaborative AI workspace. Users create *projects*, add source mat
 | Framework | Next.js 16 (App Router, Turbopack), React 19, TypeScript 6 |
 | Auth | NextAuth.js v5 — Google OAuth only. JWT with MongoDB user `_id` embedded in session |
 | Database | MongoDB 6 via Mongoose 9 for app data; Pinecone for vector embeddings |
-| Background jobs | Agenda v6 with `@agendajs/mongo-backend` — embeds uploaded docs into Pinecone |
+| Background jobs | Inngest — durable, serverless-native background functions (no long-lived poller needed); embeds uploaded docs into Pinecone |
 | Real-time collab | Yjs + y-websocket v3. Awareness protocol carries live cursors + mouse positions |
 | Editor | Tiptap v3 + `@tiptap/extension-collaboration` (Yjs-backed). 3 custom extensions: Autocomplete, Rephrase, Translate |
 | AI | LangChain + LangGraph. OpenAI for chat, embeddings (text-embedding-3-small), memory compression, image reading, and audio overview. Exa for the researcher agent's live web search |
@@ -31,19 +31,25 @@ A full-stack collaborative AI workspace. Users create *projects*, add source mat
 ```bash
 # 1. Clone and install
 git clone <repo-url>
-cd "Collaborative-ai workspace -nextjs16"
+cd nexusai
 npm install
 
 # 2. Configure environment
 cp .env.example .env.local
 # Fill in all values — see .env.example for details
 
-# 3. Run the app (two processes)
-npm run dev                        # Next.js dev server → http://localhost:3000
-node scripts/yws-server.mjs       # y-websocket collab server → ws://localhost:1234
+# 3. Run everything
+npm run dev
 ```
 
-> **y-websocket note:** `npx y-websocket` no longer works with v3 (client-only package). Use `node scripts/yws-server.mjs` instead.
+`npm run dev` starts three processes concurrently (see `package.json`):
+- **Next.js** dev server → http://localhost:3000
+- **y-websocket** collab server (`scripts/yws-server.mjs`) → ws://localhost:1234
+- **Inngest dev server** (`npx inngest-cli@latest dev`) → http://localhost:8288 — a local dashboard where you can watch background job (`doc-embedding`) runs live. No account or API keys needed for local dev.
+
+> **y-websocket note:** `npx y-websocket` no longer works with v3 (client-only package). The bundled `scripts/yws-server.mjs` replaces it — that's what `npm run dev` (or `npm run ws`) starts.
+
+> **Port conflicts:** if port 3000 is already in use by another project, run `next dev -p <port>` and pass the matching `-u http://localhost:<port>/api/inngest` to the Inngest CLI. Google OAuth's redirect URI is tied to whatever port `NEXTAUTH_URL`/`NEXT_PUBLIC_APP_URL` point to, so keep them in sync.
 
 ---
 
@@ -51,11 +57,12 @@ node scripts/yws-server.mjs       # y-websocket collab server → ws://localhost
 
 | Command | Description |
 |---|---|
-| `npm run dev` | Start Next.js with Turbopack (hot reload) |
+| `npm run dev` | Start Next.js (Turbopack, hot reload) + y-websocket server + Inngest dev server, concurrently |
+| `npm run dev:next` | Start only the Next.js dev server |
+| `npm run ws` | Start only the y-websocket collaboration server |
 | `npm run build` | Production build |
 | `npm run start` | Start production server |
 | `npm run lint` | ESLint check |
-| `node scripts/yws-server.mjs` | Start y-websocket collaboration server |
 | `npx tsc --noEmit` | TypeScript type check without emit |
 
 ---
@@ -79,6 +86,7 @@ See `.env.example` for the complete list with descriptions. Required variables:
 | `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | Cloudinary (file/media uploads) |
 | `NEXT_PUBLIC_YWEBSOCKET_URL` | y-websocket server URL (default: `ws://localhost:1234`) |
 | `WS_SECRET` | HMAC-SHA256 signing secret for WS token auth. Leave unset in dev to skip auth |
+| `INNGEST_EVENT_KEY` / `INNGEST_SIGNING_KEY` | Inngest production credentials (from app.inngest.com or its Vercel integration). Not needed locally — `npx inngest-cli dev` needs no keys |
 
 ---
 
@@ -102,6 +110,7 @@ src/app/
     addsource/{text,weblink,youtube,uploads,upload-drive-files}/
     agent/{stream,chat-history}/
     documents/{save,single-doc,autocomplete,rephrase,translate}/
+    inngest/           ← serves registered Inngest functions (doc-embedding)
     projects/, projects/[id]/, projects/docs/
     reports/{summary,study-guide,mindmap}/
     reports/{summary,studyguide,mindmap}-from-multiple-docs/
@@ -123,8 +132,10 @@ src/
     leftpanel/            Project nav, source list, report list
     middlepanel/          PDF viewer + editor wrapper + mouse presence
     project/              Project cards, create/search modals
+  inngest/
+    client.ts             Inngest client (isDev flag keyed off NODE_ENV)
+    functions/            docEmbedding.ts — chunk + embed job, triggered by "doc/embedding.requested"
   lib/
-    agenda/               Agenda job scheduler (docEmbedding job)
     api/                  Client-side fetch helpers
     helper/               Utility functions (title generation, chunking)
     llm/                  LLM singleton factory (OpenAI)
@@ -219,11 +230,29 @@ Singleton classes in `src/services/` expose userId/projectId-scoped MongoDB quer
 
 ---
 
+## Deployment
+
+Three pieces deploy independently:
+
+| Piece | Where | Why |
+|---|---|---|
+| Next.js app | Vercel | Standard serverless deploy — `output: "standalone"` in `next.config.ts` |
+| Background jobs (`doc-embedding`) | Inngest | Invokes `/api/inngest` over HTTP per step — no long-lived process needed, so it works natively on Vercel serverless |
+| y-websocket server | Render (or any always-on host) | Needs a continuously-alive event loop, which Vercel serverless can't provide. Build with `Dockerfile.ws` |
+
+Steps:
+1. **Vercel** — set every var from `.env.example` in the project's env settings (production scope), plus `NEXT_PUBLIC_YWEBSOCKET_URL` pointing at the deployed WS server (`wss://...`) and `WS_SECRET` matching it.
+2. **Inngest** — create a production app at [app.inngest.com](https://app.inngest.com), ideally via its Vercel integration (auto-sets `INNGEST_SIGNING_KEY`/`INNGEST_EVENT_KEY` and auto-syncs on every deploy). Otherwise, set those two keys manually and sync `https://<domain>/api/inngest` from the Inngest dashboard after each deploy.
+3. **Render** — new Web Service from this repo, Dockerfile path `./Dockerfile.ws`. Env vars: `MONGODB_URI`, `WS_SECRET` (same value as Vercel's). Use a paid tier — free tier spins down on idle, which breaks real-time collab reconnects.
+4. **Google OAuth** — add `https://<domain>/api/auth/callback/google` to the Authorized redirect URIs in Google Cloud Console.
+
+---
+
 ## Known Limitations / Development Notes
 
 1. **File storage** is Cloudinary (`src/lib/uploadToCloudinary.ts`) — no local disk persistence to worry about.
 2. **STM/chat-history** are stored per-user in MongoDB (`ShortTermMemorySchema`, `ChatHistorySchema`).
 3. **Google Drive picker** requires the Google Drive API to be enabled in your Google Cloud project and the picker API key to have the correct domain restrictions.
-4. **Agenda jobs** run in the Next.js server process (started in `instrumentation.ts`). In production you would want a dedicated worker process.
-5. **y-websocket** needs to run as a separate long-lived process. See the Getting Started section for the correct launch command; `npx y-websocket` does not work with v3.
-6. **`npm overrides` for MongoDB**: An earlier `overrides: { mongodb }` in `package.json` was causing Agenda to hang. The `overrides` field has been removed — do not re-add it.
+4. **y-websocket** needs to run as a separate long-lived process — it's the one piece that can't be Vercel serverless. See Deployment below. `npx y-websocket` does not work with v3; use `scripts/yws-server.mjs`.
+5. **Background embedding** (`doc-embedding`) previously ran on Agenda (MongoDB-polling job queue), which requires a continuously-alive event loop that Vercel serverless functions can't provide — jobs got enqueued but never picked up in production. This was replaced with Inngest, which invokes `/api/inngest` over HTTP per step and needs no long-lived process. See `src/inngest/functions/docEmbedding.ts`.
+6. Threading a document's `fileUrl` through to the embedding job (not just its extracted text) matters: chunk metadata's `originalUrl` field is what the retriever's "scope to selected source" filter matches against. Omitting it makes chat retrieval silently return nothing for that source even though embedding reports success.
